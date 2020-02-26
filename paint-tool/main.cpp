@@ -17,8 +17,19 @@ typedef array<array<int, 64>, 64> DrawSurface_t;
 
 void readFile(string filename, DrawSurface_t& ds);
 void saveFile(string filename, DrawSurface_t& ds);
+void fillArea(DrawSurface_t& ds, int x, int y, int exist, int new_color);
 
 int main(int argc, char* argv[]) {
+    
+    if(argc < 3) {
+        cout << "Options:\n\n";
+        cout << 
+            " -n <new map file>\n"
+            " -i <existing map file>\n"
+            " -o <where to save map file>\n\n";
+
+        return 1;
+    }
 
     DrawSurface_t drawSurface;
     for(int y = 0; y < 64; y++)
@@ -85,9 +96,7 @@ int main(int argc, char* argv[]) {
     sdl_event_map_t eventmap = {
         {
             SDL_KEYDOWN,
-            [
-                    &loop_running,&outfile,
-                    &drawSurface](void* ptr) {
+            [&loop_running,&outfile,&drawSurface](void* ptr) {
 
                 auto* key_event = (SDL_KeyboardEvent*)ptr;
                 auto sym = key_event->keysym.sym;
@@ -114,13 +123,27 @@ int main(int argc, char* argv[]) {
         },
         {
             SDL_MOUSEBUTTONDOWN,
-            [&is_drawing, &color_index](void* ptr) {
+            [&is_drawing, &color_index, &drawSurface](void* ptr) {
                 auto* mouse_button_event = (SDL_MouseButtonEvent*)ptr;
                 auto x = mouse_button_event->x;
                 auto y = mouse_button_event->y;
+                auto but = mouse_button_event->button;
 
-                if(x < MAX_X && y < MAX_Y)
-                    is_drawing = true;
+                if(x < MAX_X && y < MAX_Y) {
+                    if(but == SDL_BUTTON_LEFT) {
+                        is_drawing = true;
+                        drawSurface[y/PIXEL_SIZE][x/PIXEL_SIZE] = color_index;
+                    }
+                    else if(but == SDL_BUTTON_RIGHT) {
+                        cout << "Callback: " << x << ", " << y << endl;
+
+                        fillArea(drawSurface, 
+                            x/PIXEL_SIZE, 
+                            y/PIXEL_SIZE, 
+                            drawSurface[y/PIXEL_SIZE][x/PIXEL_SIZE], 
+                            color_index);
+                    }
+                }
                 else if(x > 800-COLOR_BLOCK_SIZE && y < COLOR_SEL_HEIGHT) {
                     // selecting a different color
                     color_index = y / COLOR_BLOCK_SIZE;
@@ -190,6 +213,28 @@ int main(int argc, char* argv[]) {
 
     SDL_Quit();
     return 0;
+}
+
+void fillArea(DrawSurface_t& ds, int x, int y, int exist, int new_color) {
+
+    //cout << x << ", " << y << endl;
+    //cout << "fa\n";
+
+    if(x < 0 || x > 63 || y < 0 || y > 63) {
+        return;
+    }
+
+    else if(ds[y][x] == exist) {
+        ds[y][x] = new_color;
+
+        //cout << "  rec\n";
+
+        fillArea(ds, x, y-1, exist, new_color); // up
+        fillArea(ds, x, y+1, exist, new_color); // down
+        fillArea(ds, x-1, y, exist, new_color); // left
+        fillArea(ds, x+1, y, exist, new_color); // right
+
+    }
 }
 
 void readFile(string filename, DrawSurface_t& ds) {
