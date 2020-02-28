@@ -92,6 +92,7 @@ int main(int argc, char* argv[]) {
     int color_index = 0;
     bool is_drawing = false;
     bool using_large_select = false;
+    int last_x = -1, last_y = -1;
 
     sdl_event_map_t eventmap = {
         {
@@ -110,20 +111,18 @@ int main(int argc, char* argv[]) {
         },
         {
             SDL_MOUSEMOTION,
-            [&drawSurface,&is_drawing,&color_index](void* ptr) {
+            [&drawSurface,&is_drawing,&color_index,&last_x,&last_y](void* ptr) {
                 auto* mouse_motion_event = (SDL_MouseMotionEvent*)ptr;
                 auto x = mouse_motion_event->x;
                 auto y = mouse_motion_event->y;
 
-                if(is_drawing && x < MAX_X && y < MAX_Y) {
+                if(is_drawing && x < MAX_X && y < MAX_Y)
                     drawSurface[y/PIXEL_SIZE][x/PIXEL_SIZE] = color_index;
-                }
-                
             }
         },
         {
             SDL_MOUSEBUTTONDOWN,
-            [&is_drawing, &color_index, &drawSurface](void* ptr) {
+            [&is_drawing, &color_index, &drawSurface, &last_x, &last_y](void* ptr) {
                 auto* mouse_button_event = (SDL_MouseButtonEvent*)ptr;
                 auto x = mouse_button_event->x;
                 auto y = mouse_button_event->y;
@@ -132,10 +131,12 @@ int main(int argc, char* argv[]) {
                 if(x < MAX_X && y < MAX_Y) {
                     if(but == SDL_BUTTON_LEFT) {
                         is_drawing = true;
+                        last_x = x;
+                        last_y = y;
                         drawSurface[y/PIXEL_SIZE][x/PIXEL_SIZE] = color_index;
                     }
                     else if(but == SDL_BUTTON_RIGHT) {
-                        cout << "Callback: " << x << ", " << y << endl;
+                        //cout << "Callback: " << x << ", " << y << endl;
 
                         fillArea(drawSurface, 
                             x/PIXEL_SIZE, 
@@ -216,6 +217,9 @@ int main(int argc, char* argv[]) {
 }
 
 void fillArea(DrawSurface_t& ds, int x, int y, int exist, int new_color) {
+
+    if(exist == new_color)
+        return;
 
     //cout << x << ", " << y << endl;
     //cout << "fa\n";
