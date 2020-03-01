@@ -120,7 +120,7 @@ ModelParser::ModelParser(std::string filename) {
     this->named_vertices.clear();
     this->named_tris.clear();
     this->m_namespace.clear();
-    SimpleModelParser::setFileLocation("../assets/models/");
+    //SimpleModelParser::setFileLocation("../assets/models/");
 
 }
 

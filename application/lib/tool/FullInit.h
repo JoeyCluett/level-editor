@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lib/Initialization.h"
+#include "../Initialization.h"
 
 #ifndef GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_NONE
@@ -16,6 +16,8 @@
 struct GameWorld {
     GLFWwindow*      window;
     btDynamicsWorld* dynamicsWorld;  
+    std::vector<btCollisionShape*> collision_shapes;
+    std::vector<btRigidBody*> rigid_body_list;
 };
 
 auto initGameWorld(std::string game_name = "", bool fullscreen = false) -> GameWorld;
@@ -51,7 +53,10 @@ auto init_bt(void) -> btDiscreteDynamicsWorld* {
 	btSequentialImpulseConstraintSolver* solver             = new btSequentialImpulseConstraintSolver;
 	btDiscreteDynamicsWorld* dynamicsWorld                  = new btDiscreteDynamicsWorld(
                                                                    dispatcher, overlappingPairCache, solver, collisionConfiguration);
-	dynamicsWorld->setGravity(btVector3(0, -10, 0));
+	//dynamicsWorld->setGravity(btVector3(0, -10, 0));
+	//dynamicsWorld->setGravity(btVector3(0, -10, 0));
+	dynamicsWorld->setGravity(btVector3(0, 0.0f, 0));
+
 
     return dynamicsWorld;
 }

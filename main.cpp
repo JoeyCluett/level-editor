@@ -4,6 +4,7 @@
 #include <string>
 #include <SDL/SDL.h>
 #include "event_core.h"
+#include "main.h"
 
 using namespace std;
 
@@ -13,8 +14,9 @@ struct Tile_t {
     int type;
     int tracked;
 
-    static const int DEFAULT = 0;
-    static const int BARRIER = 1;
+    static const int DEFAULT     = 0;
+    static const int BARRIER     = 1;
+    static const int SPAWN_POINT = 2;
 };
 
 typedef vector<vector<Tile_t>> TileArray_t;
@@ -32,6 +34,7 @@ void initTileArray(TileArray_t& ta);
 void render(SDL_Surface* scr, TileArray_t& ta, bool render_collision_data);
 void saveFile(std::string filename, TileArray_t& ta);
 void readFile(std::string filename, TileArray_t& ta);
+void renderAiData(SDL_Surface* scr, TileArray_t& ta, int y, int x);
 
 vector<CollisionGeometry> optimize_collision_entities(TileArray_t& ta);
 
@@ -90,13 +93,17 @@ int main(int argc, char* argv[]) {
 
     bool loop_running = true;
     bool render_collision_data = false;
+    bool render_ai_data = false;
+
+    int tile_x = 0, tile_y = 0;
 
     sdl_event_map_t eventmap = {
         {
             SDL_KEYDOWN,
             [
                     &loop_running,&outfile,
-                    &tile_array,&render_collision_data](void* ptr) {
+                    &tile_array,&render_collision_data,
+                    &render_ai_data](void* ptr) {
 
                 auto* key_event = (SDL_KeyboardEvent*)ptr;
                 auto sym = key_event->keysym.sym;
@@ -107,12 +114,14 @@ int main(int argc, char* argv[]) {
                     ::saveFile(outfile, tile_array);
                 else if(sym == SDLK_q)
                     render_collision_data = !render_collision_data;
+                else if(sym == SDLK_w)
+                    render_ai_data = !render_ai_data;
 
             }
         },
         {
             SDL_MOUSEBUTTONDOWN,
-            [&tile_array](void* ptr) {
+            [&tile_array, &tile_x, &tile_y](void* ptr) {
                 auto* mouse_button_event = (SDL_MouseButtonEvent*)ptr;
                 auto x = mouse_button_event->x;
                 auto y = mouse_button_event->y;
@@ -123,11 +132,38 @@ int main(int argc, char* argv[]) {
                 if(x > 24)
                     return;
 
+                tile_x = x;
+                tile_y = y;
+
                 Tile_t& tref = tile_array[y][x];
-                if(tref.type == Tile_t::DEFAULT)
-                    tref.type = Tile_t::BARRIER;
-                else if(tref.type == Tile_t::BARRIER)
-                    tref.type = Tile_t::DEFAULT;
+
+                if(mouse_button_event->button == SDL_BUTTON_LEFT) {
+
+                    if(tref.type != Tile_t::BARRIER)
+                        tref.type = Tile_t::BARRIER;
+                    else
+                        tref.type = Tile_t::DEFAULT;
+                
+                }
+                else if(mouse_button_event->button == SDL_BUTTON_RIGHT) {
+
+                    if(tref.type != Tile_t::SPAWN_POINT)
+                        tref.type = Tile_t::SPAWN_POINT;
+                    else
+                        tref.type = Tile_t::DEFAULT;
+                    
+                }
+            }
+        },
+        {
+            SDL_MOUSEMOTION,
+            [&tile_x, &tile_y](void* ptr) {
+                auto* mouse_motion_event = (SDL_MouseMotionEvent*)ptr;
+                auto x = mouse_motion_event->x;
+                auto y = mouse_motion_event->y;
+
+                tile_x = x / TILEWIDTH;
+                tile_y = y / TILEWIDTH;
             }
         }
     };
@@ -135,6 +171,9 @@ int main(int argc, char* argv[]) {
     while(loop_running) {
         sdl_evaluate_events(eventmap);
         render(scr, tile_array, render_collision_data);
+        if(render_ai_data)
+            renderAiData(scr, tile_array, tile_y, tile_x);
+
         SDL_Flip(scr);
         SDL_Delay(16);
     }
@@ -261,6 +300,9 @@ void readFile(std::string filename, TileArray_t& ta) {
             else if(token == "1") {
                 ta[y][x].type = Tile_t::BARRIER;
             }
+            else if(token == "2") {
+                ta[y][x].type = Tile_t::SPAWN_POINT;
+            }
             else {
                 cout << "map contains invalid data: " << token << endl;
                 exit(1);
@@ -280,6 +322,42 @@ void initTileArray(TileArray_t& ta) {
             ta.back().back().type = Tile_t::DEFAULT;
             ta.back().back().tracked = 0;
         }
+    }
+}
+
+void renderAiData(SDL_Surface* scr, TileArray_t& ta, int y, int x) {
+
+    Graph g;
+    std::vector<std::pair<int,int>> pts;
+
+    // insert nodes into Graph
+    for(int y = 0; y < 25; y++) {
+        for(int x = 0; x < 25; x++) {
+            if(ta[y][x].type != Tile_t::BARRIER) {
+                g.insertNewNode(y, x);
+    
+                // spawn points are special
+                if(ta[y][x].type == Tile_t::SPAWN_POINT)
+                    pts.push_back({ y, x });
+            }
+        }
+    }
+
+    for(auto& p : pts) {
+        auto v = g.searchFor(p, { y, x });
+        
+        if(v)
+            for(auto r : *v) {
+
+                SDL_Rect rect;
+                rect.x = TILEWIDTH * r.second;
+                rect.y = TILEWIDTH * r.first;
+
+                rect.h = 24;
+                rect.w = 24;
+
+                SDL_FillRect(scr, &rect, SDL_MapRGB(scr->format, 0x00, 0x00, 0x00));
+            }
     }
 }
 
@@ -330,7 +408,11 @@ void render(SDL_Surface* scr, TileArray_t& ta, bool render_collision_data) {
                 SDL_FillRect(scr, &r, SDL_MapRGB(scr->format, 255, 255, 255));
 
             }
+            else if(t.type == Tile_t::SPAWN_POINT) {
 
+                SDL_FillRect(scr, &r, SDL_MapRGB(scr->format, 0, 255, 255));
+
+            }
         }
     }
 

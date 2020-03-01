@@ -104,6 +104,16 @@ public:
         return this->uniform_list.size() - 1;
     }
 
+    GLint getUniformLocation(std::string uniform_name) {
+        glUseProgram(this->programid);
+        return glGetUniformLocation(this->programid, uniform_name.c_str());
+    }
+
+    GLint getUniformLocation(const char* uniform_name) {
+        glUseProgram(this->programid);
+        return glGetUniformLocation(this->programid, uniform_name);
+    }
+
     GLuint getShaderId(void) {
         return this->programid;
     }
