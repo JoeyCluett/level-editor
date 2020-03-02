@@ -7,6 +7,7 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include "lib/Initialization.h"
@@ -19,6 +20,8 @@
 // load custom tool file importers
 #include "lib/tool/LevelImport.h"
 #include "lib/tool/FullInit.h"
+#include "lib/tool/AxisGrid.h"
+#include "lib/tool/StlImport.h"
 
 #include "main.h"
 
@@ -97,7 +100,7 @@ int main(int argc, char* argv[]) {
 
         btTransform box_tf;
         box_tf.setIdentity();
-        box_tf.setOrigin(btVector3(1.0f, 0.1f, 1.0f));
+        box_tf.setOrigin(btVector3(1.0f, 0.0f, 1.0f));
 
         btScalar m(2.0f);
         btVector3 local_inertia(0.0, 0.0, 0.0);
@@ -128,14 +131,22 @@ int main(int argc, char* argv[]) {
     // a bunch of data that needs to be read from various asset files
     Texture*    brick_texture;
     Texture*    dirt_texture;
+
     Shader*     environment_shader;
     Shader*     texture_shader;
+    Shader*     grid_shader;
+    Shader*     direc_shader;
+    
     ModelInfo   levelWalls;
     ModelInfo   levelWallsUV;
     ModelInfo   box_info;
     ModelInfo   ground_texels;
     ModelInfo   ground_uv_texels;
     ModelInfo   ball_model;
+    ModelInfo   grid_verts;
+    ModelInfo   grid_colors;
+    ModelInfo   sniper_rifle_v;
+    ModelInfo   sniper_rifle_n;
 
     // set global location data for asset loaders
     Shader::setVertexShaderDirectory("./assets/shaders/");
@@ -151,7 +162,7 @@ int main(int argc, char* argv[]) {
             TEXTURE_CUSTOM_PAINT_TOOL, 
             GL_TEXTURE0 + 0, 
             GL_REPEAT, 
-            GL_LINEAR);
+            GL_NEAREST);
 
     dirt_texture = 
         new Texture(
@@ -163,11 +174,30 @@ int main(int argc, char* argv[]) {
 
     environment_shader = new Shader( "environment" ); // shaders/environment.*.glsl
     texture_shader     = new Shader( "texture" );     // shaders/texture.*.glsl
+    grid_shader        = new Shader( "grid" );        // shaders/grid.*.glsl
+    direc_shader       = new Shader( "directional" ); // shaders/directional.*.glsl
 
+    // load binary stl file with normal information
+    {
+        auto mi_pair = loadBinaryStlModelWithNormals("./assets/models/sniper-rifle.stl");
+        sniper_rifle_v = mi_pair.first;
+        sniper_rifle_n = mi_pair.second;
+    }
+
+    //sniper_rifle = loadBinaryStlModel("./assets/models/sniper-rifle.stl");
+
+    // load custom map file
     {
         auto levelWallsPair = ImportLevelFile("../map.txt", gw, true); // turns out, we dont actually need to pass gw :(
         levelWalls   = levelWallsPair.first;
         levelWallsUV = levelWallsPair.second;
+    }
+
+    // generate grid for OpenGL
+    {
+        auto dual_mi = loadXYGrid(5, 5, 5);
+        grid_verts  = dual_mi.first;
+        grid_colors = dual_mi.second;
     }
 
     SimpleModelParser::loadModelList({
@@ -209,7 +239,9 @@ int main(int argc, char* argv[]) {
     // done loading assets
     // ============================================================
 
-    FloatCam camera({ 0.5, 1.0, 0.5 }, 6.0, 800, 600, 0.07, gw.window);
+    //FloatCam camera({ 0.5, 1.0, 0.5 }, 6.0, 800, 600, 0.07, gw.window);
+    FloatCam camera({ 0.5, 1.0, 0.5 }, 1.0, 800, 600, 0.07, gw.window);
+
 
     glm::mat4 Model = glm::mat4(1.0f);
 
@@ -252,18 +284,92 @@ int main(int argc, char* argv[]) {
         }
 
         // perform the physics simulation
-        {
+        if(false) {
             const double timestep = 1.0/120.0;
             while(accumulated_time >= timestep) {
                 user_body->setAngularVelocity(btVector3( 0.0f, 0.0f, 0.0f ));
-                user_body->forceActivationState(DISABLE_DEACTIVATION);
+                //user_body->forceActivationState(DISABLE_DEACTIVATION);
                 gw.dynamicsWorld->stepSimulation(timestep);
                 accumulated_time -= timestep;
             }
         }
 
         auto up = user_body->getCenterOfMassPosition();
-        camera.setPosition({ up.x(), up.y(), up.z() });
+        //camera.setPosition({ up.x(), up.y(), up.z() });
+
+        // render colored grid
+        if(true) {
+
+            auto new_mvp = Projection * camera.getTf() * Model;
+            glUseProgram(grid_shader->getShaderId());
+
+            auto uniform_location = grid_shader->getUniformLocation("MVP");
+            glUniformMatrix4fv(
+                uniform_location,
+                1,
+                GL_FALSE,
+                reinterpret_cast<float*>(&new_mvp));
+
+            // vertex position
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, grid_verts.buffer_id);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            // color information
+            glEnableVertexAttribArray(1);
+            glBindBuffer(GL_ARRAY_BUFFER, grid_colors.buffer_id);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            glDrawArrays(GL_LINES, 0, grid_verts.vertices);
+
+        }
+
+        // render the imported STL model
+        if(true) {
+            
+            //auto new_mvp = Projection * camera.getTf() * Model;
+            //auto new_mvp = Projection * camera.getTf() * glm::scale(glm::mat4(1.0f), {0.05f, 0.05f, 0.05f});
+            
+            // M - VP
+
+            glUseProgram(direc_shader->getShaderId());
+
+            auto vp_mat = Projection * camera.getTf();
+            auto m_mat  = 
+                glm::translate(
+                    glm::mat4(),
+                    glm::vec3{ 0.0f, 0.0f, 0.1f }) *
+                glm::rotate(
+                    -3.14159f/2.0f, 
+                    glm::vec3{ 1.0f, 0.0f, 0.0f }) * 
+                glm::scale(
+                    glm::mat4(1.0f), 
+                    {0.01f, 0.01f, 0.01f});
+
+            //auto mvp_uniform_location = direc_shader->getUniformLocation("MVP");
+            //glUniformMatrix4fv(mvp_uniform_location, 1, GL_FALSE, reinterpret_cast<float*>(&new_mvp));
+
+            // place uniforms in shader
+            glUniformMatrix4fv(
+                direc_shader->getUniformLocation("VP"),
+                1, GL_FALSE, glm::value_ptr(vp_mat));
+
+            glUniformMatrix4fv(
+                direc_shader->getUniformLocation("M"),
+                1, GL_FALSE, glm::value_ptr(m_mat));
+
+            // vertex position
+            glEnableVertexAttribArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER, sniper_rifle_v.buffer_id);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            // vertex normals
+            glEnableVertexAttribArray(1);
+            glBindBuffer(GL_ARRAY_BUFFER, sniper_rifle_n.buffer_id);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            glDrawArrays(GL_TRIANGLES, 0, sniper_rifle_v.vertices);
+        }
 
         // render the physics blocks here
         if(false) {
@@ -302,6 +408,7 @@ int main(int argc, char* argv[]) {
             glDrawArrays(GL_TRIANGLES, 0, ball_model.vertices);
         }
 
+        // render textured walls (brick)
         if(true) {
             auto new_mvp = Projection * camera.getTf() * Model;
             glUseProgram(texture_shader->getShaderId());
@@ -328,7 +435,7 @@ int main(int argc, char* argv[]) {
             glDrawArrays(GL_TRIANGLES, 0, levelWalls.vertices);
         }
 
-        // render the textured ground
+        // render textured ground (dirt)
         if(true) {
             auto new_mvp = Projection * camera.getTf() * Model;
             glUseProgram(texture_shader->getShaderId());

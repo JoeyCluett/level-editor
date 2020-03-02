@@ -38,7 +38,8 @@ auto initGameWorld(std::string game_name, bool fullscreen) -> GameWorld {
     gw.dynamicsWorld = init_bt();
 
     // some housekeeping stuff for OpenGL
-    glClearColor(0.0f, 0.0f, 0.35f, 0.0f);
+    //glClearColor(0.0f, 0.0f, 0.35f, 0.0f);
+    glClearColor(0.25f, 0.25f, 0.25f, 0.0f);
     glDepthFunc(GL_LESS);
     glEnable(GL_DEPTH_TEST);
 
